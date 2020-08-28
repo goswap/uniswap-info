@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import styled from 'styled-components'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
@@ -9,10 +9,11 @@ import { CustomLink } from '../Link'
 import Row from '../Row'
 import { Divider } from '..'
 
-import { formattedNum, formattedPercent } from '../../helpers'
+import { formattedNum, formattedPercent } from '../../utils'
 import { useMedia } from 'react-use'
 import { withRouter } from 'react-router-dom'
 import { OVERVIEW_TOKEN_BLACKLIST } from '../../constants'
+import FormattedName from '../FormattedName'
 
 dayjs.extend(utc)
 
@@ -43,10 +44,10 @@ const DashGrid = styled.div`
   grid-gap: 1em;
   grid-template-columns: 100px 1fr 1fr;
   grid-template-areas: 'name liq vol';
-  width: 100%;
+  padding: 0 1.125rem;
+
   > * {
     justify-content: flex-end;
-    width: 100%;
 
     &:first-child {
       justify-content: flex-start;
@@ -61,11 +62,6 @@ const DashGrid = styled.div`
     grid-template-columns: 180px 1fr 1fr 1fr;
     grid-template-areas: 'name symbol liq vol ';
 
-    :hover {
-      cursor: ${({ focus }) => focus && 'pointer'};
-      background-color: ${({ focus, theme }) => focus && theme.bg3};
-    }
-
     > * {
       justify-content: flex-end;
       width: 100%;
@@ -78,7 +74,7 @@ const DashGrid = styled.div`
 
   @media screen and (min-width: 1080px) {
     display: grid;
-    grid-gap: 1em;
+    grid-gap: 0.5em;
     grid-template-columns: 1.5fr 0.6fr 1fr 1fr 1fr 1fr;
     grid-template-areas: 'name symbol liq vol price change';
   }
@@ -100,15 +96,15 @@ const ClickableText = styled(Text)`
 `
 
 const DataText = styled(Flex)`
-  @media screen and (max-width: 40em) {
-    font-size: 0.85rem;
-  }
-
   align-items: center;
-  text-align: right;
+  text-align: center;
 
   & > * {
-    font-size: 1em;
+    font-size: 14px;
+  }
+
+  @media screen and (max-width: 600px) {
+    font-size: 12px;
   }
 `
 
@@ -122,11 +118,10 @@ const SORT_FIELD = {
 }
 
 // @TODO rework into virtualized list
-function TopTokenList({ tokens, history, itemMax = 10 }) {
+function TopTokenList({ tokens, itemMax = 10 }) {
   // page state
   const [page, setPage] = useState(1)
   const [maxPage, setMaxPage] = useState(1)
-  const ITEMS_PER_PAGE = itemMax
 
   // sorting
   const [sortDirection, setSortDirection] = useState(true)
@@ -134,59 +129,72 @@ function TopTokenList({ tokens, history, itemMax = 10 }) {
 
   const below1080 = useMedia('(max-width: 1080px)')
   const below680 = useMedia('(max-width: 680px)')
+  const below600 = useMedia('(max-width: 600px)')
 
   useEffect(() => {
     setMaxPage(1) // edit this to do modular
     setPage(1)
   }, [tokens])
 
-  const formattedTokens =
-    tokens &&
-    Object.keys(tokens).map(key => {
-      return !OVERVIEW_TOKEN_BLACKLIST.includes(key) && tokens[key]
-    })
+  const formattedTokens = useMemo(() => {
+    return (
+      tokens &&
+      Object.keys(tokens)
+        .filter(key => {
+          return !OVERVIEW_TOKEN_BLACKLIST.includes(key)
+        })
+        .map(key => tokens[key])
+    )
+  }, [tokens])
 
   useEffect(() => {
     if (tokens && formattedTokens) {
       let extraPages = 1
-      if (formattedTokens.length % ITEMS_PER_PAGE === 0) {
+      if (formattedTokens.length % itemMax === 0) {
         extraPages = 0
       }
-      setMaxPage(Math.floor(formattedTokens.length / ITEMS_PER_PAGE) + extraPages)
+      setMaxPage(Math.floor(formattedTokens.length / itemMax) + extraPages)
     }
-  }, [tokens, formattedTokens, ITEMS_PER_PAGE])
+  }, [tokens, formattedTokens, itemMax])
 
-  const filteredList =
-    formattedTokens &&
-    formattedTokens
-      .sort((a, b) => {
-        if (sortedColumn === SORT_FIELD.SYMBOL || sortedColumn === SORT_FIELD.NAME) {
-          return a[sortedColumn] > b[sortedColumn] ? (sortDirection ? -1 : 1) * 1 : (sortDirection ? -1 : 1) * -1
-        }
-        return parseFloat(a[sortedColumn]) > parseFloat(b[sortedColumn])
-          ? (sortDirection ? -1 : 1) * 1
-          : (sortDirection ? -1 : 1) * -1
-      })
-      .slice(ITEMS_PER_PAGE * (page - 1), page * ITEMS_PER_PAGE)
+  const filteredList = useMemo(() => {
+    return (
+      formattedTokens &&
+      formattedTokens
+        .sort((a, b) => {
+          if (sortedColumn === SORT_FIELD.SYMBOL || sortedColumn === SORT_FIELD.NAME) {
+            return a[sortedColumn] > b[sortedColumn] ? (sortDirection ? -1 : 1) * 1 : (sortDirection ? -1 : 1) * -1
+          }
+          return parseFloat(a[sortedColumn]) > parseFloat(b[sortedColumn])
+            ? (sortDirection ? -1 : 1) * 1
+            : (sortDirection ? -1 : 1) * -1
+        })
+        .slice(itemMax * (page - 1), page * itemMax)
+    )
+  }, [formattedTokens, itemMax, page, sortDirection, sortedColumn])
 
   const ListItem = ({ item, index }) => {
     if (!item) {
       return ''
     }
     return (
-      <DashGrid style={{ height: '60px' }} focus={true} onClick={() => history.push('/token/' + item.id)}>
+      <DashGrid style={{ height: '48px' }} focus={true}>
         <DataText area="name" fontWeight="500">
           <Row>
-            {!below680 && <div style={{ marginRight: '1rem' }}>{index}</div>}
+            {!below680 && <div style={{ marginRight: '1rem', width: '10px' }}>{index}</div>}
             <TokenLogo address={item.id} />
             <CustomLink style={{ marginLeft: '16px', whiteSpace: 'nowrap' }} to={'/token/' + item.id}>
-              {below680 ? item.symbol : item.name}
+              <FormattedName
+                text={below680 ? item.symbol : item.name}
+                maxCharacters={below600 ? 8 : 16}
+                adjustSize={true}
+              />
             </CustomLink>
           </Row>
         </DataText>
         {!below680 && (
           <DataText area="symbol" color="text" fontWeight="500">
-            {item.symbol}
+            <FormattedName text={item.symbol} maxCharacters={5} />
           </DataText>
         )}
         <DataText area="liq">{formattedNum(item.totalLiquidityUSD, true)}</DataText>
@@ -203,7 +211,7 @@ function TopTokenList({ tokens, history, itemMax = 10 }) {
 
   return (
     <ListWrapper>
-      <DashGrid center={true} style={{ height: 'fit-content', padding: '0 0 1rem 0' }}>
+      <DashGrid center={true} style={{ height: 'fit-content', padding: '0 1.125rem 1rem 1.125rem' }}>
         <Flex alignItems="center" justifyContent="flexStart">
           <ClickableText
             color="text"
@@ -288,7 +296,7 @@ function TopTokenList({ tokens, history, itemMax = 10 }) {
           filteredList.map((item, index) => {
             return (
               <div key={index}>
-                <ListItem key={index} index={(page - 1) * 10 + index + 1} item={item} />
+                <ListItem key={index} index={(page - 1) * itemMax + index + 1} item={item} />
                 <Divider />
               </div>
             )
